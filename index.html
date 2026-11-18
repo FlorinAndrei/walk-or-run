@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walk or run in the rain?</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --surface-2: #242422;
+  --border: #383835;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e85;
+  --accent: #3987e5;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: grid; grid-template-columns: minmax(0, 1fr) 420px; overflow: hidden;
+}
+#stage { position: relative; min-height: 0; }
+#gl { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+#gl:active { cursor: grabbing; }
+#hud { position: absolute; left: 16px; top: 14px; pointer-events: none; }
+#hud h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
+#hud p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+#legend {
+  position: absolute; left: 16px; bottom: 16px; width: 250px; pointer-events: none;
+  background: rgba(26,26,25,.82); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
+}
+#legend .bar { height: 10px; border-radius: 3px; margin: 6px 0 3px; }
+#legend .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+#legend .note { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+#progress {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 260px;
+  background: rgba(26,26,25,.92); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+  font-size: 13px; color: var(--text-secondary); display: none;
+}
+#progress .track { height: 6px; background: var(--surface-2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+#progress .fill { height: 100%; width: 0; background: var(--accent); }
+#err { position: absolute; inset: 0; display: none; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--text-secondary); background: rgba(18,18,17,.88); }
+#err button { padding: 5px 14px; font-size: 13px; }
+aside {
+  background: var(--surface-1); border-left: 1px solid var(--border);
+  overflow-y: auto; padding: 14px 16px 20px; min-height: 0;
+}
+h2 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 18px 0 8px; }
+h2:first-child { margin-top: 0; }
+h2.row { display: flex; justify-content: space-between; align-items: center; }
+h2.row .btns { display: flex; gap: 6px; }
+button { background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font: 12.5px system-ui, sans-serif; letter-spacing: 0; text-transform: none; cursor: pointer; }
+button:hover { border-color: var(--text-muted); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.tile .k { font-size: 12px; color: var(--text-secondary); }
+.tile .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--text-muted); min-height: 1.4em; }
+.ctl { display: grid; grid-template-columns: 104px 1fr 92px 20px; align-items: center; gap: 8px; margin: 7px 0; }
+.ctl .rst { grid-column: 4; width: 20px; height: 20px; padding: 0; line-height: 1; font-size: 13px; color: var(--text-secondary); }
+.ctl .rst:hover { color: var(--text-primary); }
+.ctl .rst.same { visibility: hidden; }
+.ctl label { color: var(--text-secondary); font-size: 13px; }
+.ctl output { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.ctl small { grid-column: 2 / 4; color: var(--text-muted); font-size: 11.5px; margin-top: -5px; }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+select { width: 100%; background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; }
+#plotwrap { position: relative; }
+#plot { width: 100%; height: 250px; display: block; cursor: crosshair; touch-action: none; }
+#tip {
+  position: absolute; pointer-events: none; display: none; z-index: 2; min-width: 150px;
+  background: var(--surface-0); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+#tip .h { font-weight: 600; margin-bottom: 3px; }
+#tip .r { display: flex; justify-content: space-between; gap: 12px; color: var(--text-secondary); }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+#plegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-secondary); margin: 6px 0 0; }
+details { margin-top: 10px; color: var(--text-secondary); font-size: 12.5px; }
+summary { cursor: pointer; color: var(--text-secondary); }
+table { border-collapse: collapse; width: 100%; margin-top: 6px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 2px 4px; border-bottom: 1px solid var(--border); font-weight: 400; }
+th { color: var(--text-muted); }
+details p, details li { color: var(--text-secondary); }
+details ul { padding-left: 18px; margin: 6px 0; }
+@media (max-width: 860px) {
+  body { grid-template-columns: 1fr; grid-template-rows: 46vh auto; overflow: auto; height: auto; }
+  aside { border-left: 0; border-top: 1px solid var(--border); overflow: visible; }
+  #legend { width: 170px; left: 8px; bottom: 8px; padding: 6px 8px; }
+  #legend .note { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <div id="hud"><h1>Walk or run in the rain?</h1><p id="hudline"></p></div>
+  <div id="legend">
+    <div style="font-size:12.5px">Water collected over the trip</div>
+    <div class="bar" id="lbar"></div>
+    <div class="ends"><span>0</span><span id="lmax"></span></div>
+    <div class="note">Colour scale is fixed at walking pace (1.4 m/s), so changing speed shows the body getting wetter or drier. Drag to orbit, scroll to zoom.</div>
+  </div>
+  <div id="progress"><span id="ptext">Measuring rain shadows…</span><div class="track"><div class="fill" id="pfill"></div></div></div>
+  <div id="err"></div>
+</div>
+<aside>
+  <h2>Result</h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">Water collected</div><div class="v" id="tWater">–</div><div class="s" id="tWaterS"></div></div>
+    <div class="tile"><div class="k">Versus walking at 1.4 m/s</div><div class="v" id="tVs">–</div><div class="s" id="tVsS"></div></div>
+    <div class="tile"><div class="k">Trip time</div><div class="v" id="tTime">–</div><div class="s" id="tTimeS"></div></div>
+    <div class="tile"><div class="k">Driest speed</div><div class="v" id="tBest">–</div><div class="s" id="tBestS"></div></div>
+  </div>
+
+  <h2>Total water vs speed</h2>
+  <div id="plotwrap"><canvas id="plot"></canvas><div id="tip"></div></div>
+  <div id="plegend"></div>
+  <details id="tblwrap"><summary>Data table</summary><div id="tbl"></div></details>
+
+  <h2 class="row">Motion <span class="btns"><button id="share" type="button" title="Copy a URL that opens the app with the current settings">Copy link</button><button id="reset" type="button" title="Restore the default settings and camera view">Reset all</button></span></h2>
+  <div class="ctl"><label for="iV">Speed</label><input id="iV" type="range" min="0.5" max="10" step="0.05" value="1.4"><output id="oV"></output></div>
+  <div class="ctl"><label for="iD">Distance</label><input id="iD" type="range" min="10" max="1000" step="10" value="100"><output id="oD"></output></div>
+
+  <h2>Weather</h2>
+  <div class="ctl"><label for="iR">Rain rate</label><input id="iR" type="range" min="0" max="1" step="0.005" value="0.565"><output id="oR"></output><small id="sR"></small></div>
+  <div class="ctl"><label for="iWx">Tail / head wind</label><input id="iWx" type="range" min="-10" max="10" step="0.25" value="0"><output id="oWx"></output></div>
+  <div class="ctl"><label for="iWz">Crosswind</label><input id="iWz" type="range" min="-10" max="10" step="0.25" value="0"><output id="oWz"></output></div>
+
+  <h2>Body</h2>
+  <div class="ctl"><label for="iPose">Pose</label><select id="iPose" style="grid-column: 2 / 4">
+    <option value="auto">Auto: walk below 2.2 m/s, run above</option>
+    <option value="stand">Upright, limbs straight</option>
+    <option value="walk">Walking stride</option>
+    <option value="run">Running stride</option>
+  </select></div>
+  <div class="ctl"><label for="iLean">Extra lean</label><input id="iLean" type="range" min="0" max="45" step="1" value="0"><output id="oLean"></output></div>
+  <div class="ctl"><label for="iH">Height</label><input id="iH" type="range" min="1.4" max="2.05" step="0.01" value="1.75"><output id="oH"></output></div>
+
+  <details>
+    <summary>How this is computed</summary>
+    <ul>
+      <li>Drop sizes follow the Marshall–Palmer distribution for the chosen rain rate, split into 29 size classes from 0.2 to 6 mm. Fall speeds use the Atlas et al. (1973) fit. The distribution is rescaled so the ground-level flux equals the rain rate exactly.</li>
+      <li>Wind carries every drop sideways at the wind speed.</li>
+      <li>Seen from the body, all drops of one size travel in one direction. The water that class delivers is its water content × relative speed × the area of the body visible from that direction.</li>
+      <li>Visible area is measured on the GPU: the mannequin is rendered from 1,200 directions with a triangle ID per pixel, and pixels are counted per triangle. Limbs shadowing each other is handled by the depth buffer.</li>
+      <li>Not modelled: gait motion, splashes from the ground, runoff and clothing absorption, air flow around the body, gusts.</li>
+    </ul>
+  </details>
+</aside>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- constants
+const REGIONS = ['Head', 'Torso', 'Arms', 'Legs', 'Feet'];
+const NR = REGIONS.length;
+const REGION_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
+const NT = 25, NA = 48, ND = NT * NA;      // direction table: zenith x azimuth
+const TILE = 512, ATLAS = 2048, TPA = (ATLAS / TILE) ** 2;
+const REF_H = 1.75, WALK_V = 1.4, RUN_SWITCH = 2.2;
+const V_MIN = 0.5, V_MAX = 10, V_STEP = 0.05;
+const HEAT = ['#ebe8df', '#cde2fb', '#86b6ef', '#3987e5', '#1c5cab', '#0d366b'];
+const DEG = Math.PI / 180;
+
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------- vector helpers
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const add = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const mul = (a, s) => [a[0]*s, a[1]*s, a[2]*s];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const len = a => Math.hypot(a[0], a[1], a[2]);
+const norm = a => { const l = len(a) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+
+// ---------------------------------------------------------------- mannequin
+// Axes: x forward (direction of travel), y up, z to the body's right. Metres.
+function capsule(out, a, b, ra, rb, region, o = {}) {
+  const depth = o.depth ?? 1, width = o.width ?? 1, ns = o.ns ?? 16, nc = o.nc ?? 3;
+  let w = sub(b, a);
+  w = len(w) < 1e-9 ? [0, 1, 0] : norm(w);
+  const ref = Math.abs(w[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
+  const e2 = norm(sub(ref, mul(w, dot(ref, w))));
+  const e1 = cross(e2, w);
+  const rings = [];
+  for (let j = 0; j <= nc; j++) {            // cap at a, pole first
+    const be = (Math.PI / 2) * (1 - j / nc);
+    rings.push([add(a, mul(w, -ra * Math.sin(be))), ra * Math.cos(be)]);
+  }
+  for (let j = 0; j <= nc; j++) {            // cap at b, equator first
+    const be = (Math.PI / 2) * (j / nc);
+    rings.push([add(b, mul(w, rb * Math.sin(be))), rb * Math.cos(be)]);
+  }
+  const pt = (ring, k) => {
+    const ph = 2 * Math.PI * k / ns, r = ring[1];
+    return add(ring[0], add(mul(e1, r * depth * Math.cos(ph)), mul(e2, r * width * Math.sin(ph))));
+  };
+  for (let i = 0; i + 1 < rings.length; i++) {
+    for (let k = 0; k < ns; k++) {
+      const p00 = pt(rings[i], k), p01 = pt(rings[i], k + 1);
+      const p10 = pt(rings[i + 1], k), p11 = pt(rings[i + 1], k + 1);
+      for (const t of [[p00, p10, p11], [p00, p11, p01]]) {
+        const n = cross(sub(t[1], t[0]), sub(t[2], t[0]));
+        if (len(n) > 1e-10) out.push({ p: t, region });
+      }
+    }
+  }
+}
+
+const POSES = {
+  stand: { hip: [0, 0],    knee: [0, 0],   sh: [0, 0],     el: [8, 8],   lean: 0,  label: 'Upright' },
+  walk:  { hip: [24, -18], knee: [4, 14],  sh: [-18, 20],  el: [12, 22], lean: 3,  label: 'Walking stride' },
+  run:   { hip: [48, -22], knee: [75, 48], sh: [-38, 32],  el: [85, 85], lean: 10, label: 'Running stride' },
+};
+
+function buildMesh(poseName, extraLean) {
+  const P = POSES[poseName];
+  const tris = [];
+  const hipY = 0.93, L = (P.lean + extraLean) * DEG, cl = Math.cos(L), sl = Math.sin(L);
+  const lean = p => { const dx = p[0], dy = p[1] - hipY; return [dx * cl + dy * sl, hipY - dx * sl + dy * cl, p[2]]; };
+  const dir = ang => [Math.sin(ang), -Math.cos(ang), 0];   // 0 = straight down, + = swung forward
+
+  // trunk, neck, head
+  capsule(tris, lean([0, 0.96, 0]), lean([0, 1.16, 0]), 0.15, 0.14, 1, { depth: 0.68 });
+  capsule(tris, lean([0, 1.16, 0]), lean([0, 1.37, 0]), 0.14, 0.155, 1, { depth: 0.66 });
+  capsule(tris, lean([0, 1.42, -0.13]), lean([0, 1.42, 0.13]), 0.06, 0.06, 1);
+  capsule(tris, lean([0, 1.44, 0]), lean([0, 1.55, 0]), 0.052, 0.052, 0);
+  capsule(tris, lean([0.01, 1.60, 0]), lean([0.01, 1.66, 0]), 0.092, 0.092, 0, { depth: 1.05, width: 0.84, nc: 4 });
+
+  for (let s = 0; s < 2; s++) {
+    const z = s === 0 ? -1 : 1;
+    // arm
+    const shoulder = lean([0, 1.42, 0.20 * z]);
+    const ua = dir(P.sh[s] * DEG), fa = dir((P.sh[s] + P.el[s]) * DEG);
+    const elbow = add(shoulder, mul(ua, 0.29));
+    const wrist = add(elbow, mul(fa, 0.25));
+    capsule(tris, shoulder, elbow, 0.047, 0.040, 2);
+    capsule(tris, elbow, wrist, 0.038, 0.030, 2);
+    capsule(tris, add(wrist, mul(fa, 0.03)), add(wrist, mul(fa, 0.10)), 0.034, 0.03, 2, { width: 0.6 });
+    // leg
+    const hip = [0, hipY, 0.085 * z];
+    const th = dir(P.hip[s] * DEG), shA = (P.hip[s] - P.knee[s]) * DEG, sd = dir(shA);
+    const knee = add(hip, mul(th, 0.43));
+    const ankle = add(knee, mul(sd, 0.43));
+    capsule(tris, hip, knee, 0.078, 0.058, 3);
+    capsule(tris, knee, ankle, 0.055, 0.038, 3);
+    const fd = [Math.cos(shA), Math.sin(shA), 0];
+    const sole = add(ankle, mul(sd, 0.03));
+    capsule(tris, add(sole, mul(fd, -0.04)), add(sole, mul(fd, 0.17)), 0.04, 0.04, 4, { width: 1.05 });
+  }
+
+  // put the lowest point on the ground
+  let minY = Infinity;
+  for (const t of tris) for (const p of t.p) minY = Math.min(minY, p[1]);
+  const n = tris.length;
+  const pos = new Float32Array(n * 9), nrm = new Float32Array(n * 9), ids = new Uint8Array(n * 12);
+  const area = new Float32Array(n), region = new Uint8Array(n);
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  tris.forEach((t, i) => {
+    t.p = t.p.map(p => [p[0], p[1] - minY, p[2]]);   // copy: quad corners are shared between triangles
+    const nn = cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0]));
+    area[i] = len(nn) / 2; region[i] = t.region;
+    const nu = norm(nn), id = i + 1;
+    for (let k = 0; k < 3; k++) {
+      pos.set(t.p[k], i * 9 + k * 3); nrm.set(nu, i * 9 + k * 3);
+      ids.set([id & 255, (id >> 8) & 255, (id >> 16) & 255, 255], i * 12 + k * 4);
+      for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], t.p[k][c]); hi[c] = Math.max(hi[c], t.p[k][c]); }
+    }
+  });
+  // corners that share a position share a colour, so the heat map is smooth within each body part
+  const vmap = new Map(), vert = new Uint32Array(n * 3);
+  for (let i = 0; i < n * 3; i++) {
+    const k = Math.round(pos[i*3] * 1e5) + ',' + Math.round(pos[i*3+1] * 1e5) + ',' + Math.round(pos[i*3+2] * 1e5);
+    let id = vmap.get(k); if (id === undefined) { id = vmap.size; vmap.set(k, id); }
+    vert[i] = id;
+  }
+  const center = mul(add(lo, hi), 0.5);
+  let rad = 0;
+  for (let i = 0; i < pos.length; i += 3) rad = Math.max(rad, Math.hypot(pos[i]-center[0], pos[i+1]-center[1], pos[i+2]-center[2]));
+  return { nTri: n, pos, nrm, ids, area, region, vert, nVert: vmap.size, center, rad: rad * 1.02 };
+}
+
+// ---------------------------------------------------------------- rain microphysics
+// Marshall-Palmer drop size distribution + Atlas et al. (1973) terminal velocity.
+function dropClasses(R) {
+  const lam = 4.1 * Math.pow(R, -0.21), N0 = 8000, dD = 0.2;
+  const D = [], vt = [], lwc = [], num = [];
+  let flux = 0;
+  for (let d = 0.3; d < 6.0; d += dD) {
+    const n = N0 * Math.exp(-lam * d) * dD;             // drops per m^3 in this class
+    const w = n * (Math.PI / 6) * d * d * d * 1e-9;     // m^3 water per m^3 air
+    const v = 9.65 - 10.3 * Math.exp(-0.6 * d);
+    D.push(d); vt.push(v); lwc.push(w); num.push(n);
+    flux += w * v;
+  }
+  const k = (R / 3.6e6) / flux;                         // make ground flux equal R exactly
+  return { D, vt, lwc: lwc.map(x => x * k), num: num.map(x => x * k) };
+}
+
+// ---------------------------------------------------------------- WebGL
+const canvas = $('gl');
+const gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
+// Full-stage message. With a Reload button when a reload can help; the URL keeps the settings.
+function showError(msg, canReload) {
+  const el = $('err');
+  el.textContent = msg; el.style.display = 'flex';
+  $('progress').style.display = 'none';
+  if (canReload) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = 'Reload'; b.addEventListener('click', reloadWithSettings);
+    el.appendChild(b);
+  }
+}
+function reloadWithSettings() {
+  try { history.replaceState(null, '', shareURL()); } catch (e) { /* not allowed for this origin */ }
+  location.reload();
+}
+if (!gl) {
+  showError('This page needs WebGL2, which this browser did not provide.', false);
+  throw new Error('no webgl2');
+}
+gl.disable(gl.DITHER);
+// A lost context destroys every GPU resource. Stop work, tell the user, and reload when the browser gives the context back.
+let contextLost = false;
+canvas.addEventListener('webglcontextlost', ev => {
+  ev.preventDefault();                 // permits the browser to restore the context
+  contextLost = true; gen++; ready = false;
+  showError('The browser took the graphics context away. The page reloads with the same settings when the context returns.', true);
+});
+canvas.addEventListener('webglcontextrestored', reloadWithSettings);
+
+function program(vs, fs, attribs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, '#version 300 es\nprecision highp float;\n' + src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  attribs.forEach((a, i) => gl.bindAttribLocation(p, i, a));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {};
+  const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+
+const progId = program(`
+in vec3 aPos; in vec4 aId;
+uniform vec3 uR, uU, uS, uC; uniform float uInv;
+flat out vec4 vId;
+void main() {
+  vec3 p = aPos - uC;
+  gl_Position = vec4(dot(p, uR) * uInv, dot(p, uU) * uInv, -dot(p, uS) * uInv, 1.0);
+  vId = aId;
+}`, `
+flat in vec4 vId; out vec4 o;
+void main() { o = vId; }`, ['aPos', 'aId']);
+
+const progBody = program(`
+in vec3 aPos; in vec3 aNrm; in vec3 aCol;
+uniform mat4 uVP; uniform float uScale;
+out vec3 vCol; out vec3 vN;
+void main() { gl_Position = uVP * vec4(aPos * uScale, 1.0); vCol = aCol; vN = aNrm; }`, `
+in vec3 vCol; in vec3 vN; out vec4 o;
+void main() {
+  vec3 n = normalize(vN);
+  float l = 0.72 + 0.28 * max(dot(n, normalize(vec3(0.45, 0.8, 0.4))), 0.0) + 0.06 * n.y;
+  o = vec4(vCol * l, 1.0);
+}`, ['aPos', 'aNrm', 'aCol']);
+
+const progLine = program(`
+in vec3 aPos; in float aA;
+uniform mat4 uVP; uniform vec3 uOff;
+out float vA; out vec3 vW;
+void main() { vec3 p = aPos + uOff; gl_Position = uVP * vec4(p, 1.0); vA = aA; vW = p; }`, `
+in float vA; in vec3 vW; out vec4 o;
+uniform vec4 uCol; uniform float uFade;
+void main() {
+  float f = uFade > 0.0 ? clamp(1.0 - length(vW.xz) / uFade, 0.0, 1.0) : 1.0;
+  o = vec4(uCol.rgb, uCol.a * vA * f);
+}`, ['aPos', 'aA']);
+
+// offscreen target for the visibility measurement
+const fbo = gl.createFramebuffer();
+{
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, ATLAS, ATLAS);
+  const rb = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, ATLAS, ATLAS);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+const readBuf = new Uint8Array(ATLAS * ATLAS * 4);
+const readPx = new Uint32Array(readBuf.buffer);
+
+function uploadMesh(mesh) {
+  const g = {};
+  g.vaoId = gl.createVertexArray(); gl.bindVertexArray(g.vaoId);
+  g.pos = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, g.pos); gl.bufferData(gl.ARRAY_BUFFER, mesh.pos, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  g.ids = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, g.ids); gl.bufferData(gl.ARRAY_BUFFER, mesh.ids, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+
+  g.vao = gl.createVertexArray(); gl.bindVertexArray(g.vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, g.pos);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  g.nrm = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, g.nrm); gl.bufferData(gl.ARRAY_BUFFER, mesh.nrm, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+  g.colData = new Uint8Array(mesh.nTri * 9).fill(200);
+  g.col = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, g.col); gl.bufferData(gl.ARRAY_BUFFER, g.colData, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.UNSIGNED_BYTE, true, 0, 0);
+  gl.bindVertexArray(null);
+  return g;
+}
+function freeMesh(g) {
+  for (const b of [g.pos, g.ids, g.nrm, g.col]) gl.deleteBuffer(b);
+  gl.deleteVertexArray(g.vao); gl.deleteVertexArray(g.vaoId);
+}
+
+function tableDir(d) {
+  const th = (Math.floor(d / NA) / (NT - 1)) * Math.PI / 2, ph = (d % NA) / NA * 2 * Math.PI;
+  return [Math.sin(th) * Math.cos(ph), Math.cos(th), Math.sin(th) * Math.sin(ph)];
+}
+
+// Render the mesh from every table direction and count visible pixels per triangle.
+// Result: visible projected area (m^2) per direction per triangle, plus per-region sums.
+async function buildTable(mesh, g, isStale, onProgress) {
+  const nTri = mesh.nTri;
+  const tri = new Float32Array(ND * nTri), reg = new Float32Array(ND * NR);
+  const pixArea = (2 * mesh.rad / TILE) ** 2, perRow = ATLAS / TILE;
+  for (let d0 = 0; d0 < ND; d0 += TPA) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, ATLAS, ATLAS);
+    gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(progId.p); gl.bindVertexArray(g.vaoId);
+    gl.uniform3fv(progId.u.uC, mesh.center); gl.uniform1f(progId.u.uInv, 1 / mesh.rad);
+    const cnt = Math.min(TPA, ND - d0);
+    for (let k = 0; k < cnt; k++) {
+      const s = tableDir(d0 + k);
+      const r = norm(cross(Math.abs(s[1]) > 0.99 ? [1, 0, 0] : [0, 1, 0], s)), u = cross(s, r);
+      gl.viewport((k % perRow) * TILE, Math.floor(k / perRow) * TILE, TILE, TILE);
+      gl.uniform3fv(progId.u.uR, r); gl.uniform3fv(progId.u.uU, u); gl.uniform3fv(progId.u.uS, s);
+      gl.drawArrays(gl.TRIANGLES, 0, nTri * 3);
+    }
+    gl.readPixels(0, 0, ATLAS, ATLAS, gl.RGBA, gl.UNSIGNED_BYTE, readBuf);
+    if (gl.isContextLost()) return null;                  // the pixels are not valid
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindVertexArray(null);
+    for (let k = 0; k < cnt; k++) {
+      const base = (d0 + k) * nTri, x0 = (k % perRow) * TILE, y0 = Math.floor(k / perRow) * TILE;
+      for (let y = 0; y < TILE; y++) {
+        const row = (y0 + y) * ATLAS + x0;
+        for (let x = 0; x < TILE; x++) {
+          const id = readPx[row + x] & 0xFFFFFF;
+          if (id) tri[base + id - 1] += pixArea;
+        }
+      }
+      const rb = (d0 + k) * NR;
+      for (let t = 0; t < nTri; t++) reg[rb + mesh.region[t]] += tri[base + t];
+    }
+    onProgress((d0 + cnt) / ND);
+    await new Promise(res => setTimeout(res, 0));
+    if (isStale()) return null;
+  }
+  return { tri, reg };
+}
+
+// ---------------------------------------------------------------- state
+const DEFAULTS = { v: 1.4, dist: 100, R: 10, wx: 0, wz: 0, pose: 'auto', lean: 0, H: 1.75 };
+const S = { ...DEFAULTS };
+let classes = dropClasses(S.R);
+const cache = new Map();          // "pose|lean" -> { mesh, g, table }
+let gen = 0, busy = false, ready = false;
+let sweep = null, heatMax = 1;
+
+const poseAt = v => S.pose === 'auto' ? (v < RUN_SWITCH ? 'walk' : 'run') : S.pose;
+const neededPoses = () => S.pose === 'auto' ? ['walk', 'run'] : [S.pose];
+const keyOf = pose => pose + '|' + S.lean;
+
+function entryFor(pose) {
+  const key = keyOf(pose);
+  let e = cache.get(key);
+  if (!e) {
+    const mesh = buildMesh(pose, S.lean);
+    e = { mesh, g: uploadMesh(mesh), table: null };
+    cache.set(key, e);
+  } else { cache.delete(key); cache.set(key, e); }   // refresh LRU position
+  return e;
+}
+function trimCache() {
+  const keep = new Set(neededPoses().map(keyOf));
+  for (const [k, e] of cache) {
+    if (cache.size <= 4) break;
+    if (!keep.has(k)) { freeMesh(e.g); cache.delete(k); }
+  }
+}
+
+let chain = Promise.resolve();
+function ensureTables() {
+  const my = ++gen;
+  ready = false;
+  chain = chain.then(async () => {
+    if (my !== gen) return;
+    const poses = neededPoses(), todo = poses.map(entryFor).filter(e => !e.table);
+    if (todo.length) { busy = true; $('progress').style.display = 'block'; }
+    for (let i = 0; i < todo.length; i++) {
+      const t = await buildTable(todo[i].mesh, todo[i].g, () => my !== gen,
+        f => { $('pfill').style.width = (100 * (i + f) / todo.length).toFixed(1) + '%'; });
+      if (!t) return;
+      todo[i].table = t;
+    }
+    if (my !== gen) return;
+    busy = false; $('progress').style.display = 'none';
+    if (!contextLost) $('err').style.display = 'none';   // a later measurement that succeeds clears an old failure
+    trimCache();
+    ready = true;
+    recompute();
+    if (location.search.includes('selftest') && !$('selftest')) selfTest();
+  }).catch(err => {
+    console.error(err);
+    if (contextLost || my !== gen) return;               // the context handler or a newer request owns the screen
+    busy = false; ready = false;
+    clearResults();
+    showError('The measurement failed, so there is no result to show. (' + (err && err.message || err) + ')', true);
+  });
+}
+// Remove numbers and curves that no longer match the settings.
+function clearResults() {
+  sweep = null;
+  for (const id of ['tWater', 'tVs', 'tTime', 'tBest']) { $(id).textContent = '–'; $(id + 'S').textContent = ''; }
+  $('tbl').innerHTML = ''; $('tip').style.display = 'none';
+  const c = $('plot'); c.width = c.width;                // this clears a canvas
+}
+
+// ---------------------------------------------------------------- physics evaluation
+// Wetting rate (m^3 of water per second) at speed v, per region and optionally per triangle.
+function evaluate(e, v, wantTri) {
+  const { tri, reg } = e.table, nTri = e.mesh.nTri;
+  const regRate = new Float64Array(NR), triRate = wantTri ? new Float32Array(nTri) : null;
+  const hs = (S.H / REF_H) ** 2;
+  for (let i = 0; i < classes.vt.length; i++) {
+    // direction the rain comes from, in the body's frame
+    const sx = v - S.wx, sy = classes.vt[i], sz = -S.wz, rel = Math.hypot(sx, sy, sz);
+    const c = classes.lwc[i] * rel * hs;
+    const th = Math.acos(Math.min(1, sy / rel));
+    let ph = Math.atan2(sz, sx); if (ph < 0) ph += 2 * Math.PI;
+    const ft = th / (Math.PI / 2) * (NT - 1), t0 = Math.min(NT - 1, Math.floor(ft)), t1 = Math.min(NT - 1, t0 + 1), wt = ft - t0;
+    const fa = ph / (2 * Math.PI) * NA, a0 = Math.floor(fa) % NA, a1 = (a0 + 1) % NA, wa = fa - Math.floor(fa);
+    const corners = [[t0 * NA + a0, (1 - wt) * (1 - wa)], [t0 * NA + a1, (1 - wt) * wa], [t1 * NA + a0, wt * (1 - wa)], [t1 * NA + a1, wt * wa]];
+    for (const [d, w] of corners) {
+      if (w === 0) continue;
+      const cw = c * w;
+      for (let r = 0; r < NR; r++) regRate[r] += cw * reg[d * NR + r];
+      if (triRate) { const base = d * nTri; for (let t = 0; t < nTri; t++) triRate[t] += cw * tri[base + t]; }
+    }
+  }
+  return { reg: regRate, tri: triRate };
+}
+
+// water collected per unit of skin area over the trip, mL/m^2, per triangle
+function doseAt(e, v) {
+  const r = evaluate(e, v, true).tri, hs = (S.H / REF_H) ** 2, out = new Float32Array(r.length);
+  const k = 1e6 * S.dist / v / hs;
+  for (let t = 0; t < r.length; t++) out[t] = r[t] / e.mesh.area[t] * k;
+  return out;
+}
+
+const heatStops = HEAT.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)));
+function heatColor(t, out, o) {
+  t = Math.max(0, Math.min(1, t)) * (heatStops.length - 1);
+  const i = Math.min(heatStops.length - 2, Math.floor(t)), f = t - i;
+  for (let c = 0; c < 3; c++) out[o + c] = heatStops[i][c] + (heatStops[i + 1][c] - heatStops[i][c]) * f;
+}
+
+function recompute() {
+  updateLabels();
+  if (!ready) return;
+  // sweep over speed
+  const pts = [];
+  for (let v = V_MIN; v <= V_MAX + 1e-9; v += V_STEP) {
+    const pose = poseAt(v), r = evaluate(entryFor(pose), v, false).reg;
+    const reg = Array.from(r, x => x * 1e6 * S.dist / v);
+    pts.push({ v, pose, reg, total: reg.reduce((a, b) => a + b, 0) });
+  }
+  const at = v => {
+    const r = evaluate(entryFor(poseAt(v)), v, false).reg;
+    const reg = Array.from(r, x => x * 1e6 * S.dist / v);
+    return { v, reg, total: reg.reduce((a, b) => a + b, 0) };
+  };
+  // an interior minimum only counts if it beats top speed by a clear margin
+  const top = pts[pts.length - 1];
+  let best = pts.reduce((a, b) => b.total < a.total ? b : a);
+  if (best.total >= top.total * 0.995) best = top;
+  sweep = { pts, cur: at(S.v), walk: at(WALK_V), best };
+
+  // heat scale: fixed at walking pace
+  const ref = Array.from(doseAt(entryFor(poseAt(WALK_V)), WALK_V)).filter(x => x > 0).sort((a, b) => a - b);
+  heatMax = ref.length ? ref[Math.floor(ref.length * 0.99)] : 1;
+  const e = entryFor(poseAt(S.v)), dose = doseAt(e, S.v), col = e.g.colData;
+  const m = e.mesh, vSum = new Float64Array(m.nVert), vW = new Float64Array(m.nVert);
+  for (let t = 0; t < dose.length; t++) for (let k = 0; k < 3; k++) {
+    const id = m.vert[t * 3 + k]; vSum[id] += dose[t] * m.area[t]; vW[id] += m.area[t];
+  }
+  for (let i = 0; i < m.nTri * 3; i++) { const id = m.vert[i]; heatColor(vSum[id] / vW[id] / heatMax, col, i * 3); }
+  gl.bindBuffer(gl.ARRAY_BUFFER, e.g.col); gl.bufferSubData(gl.ARRAY_BUFFER, 0, col);
+  e.colored = true;
+
+  updateReadouts(); drawPlot(); updateTable();
+}
+
+// ---------------------------------------------------------------- UI text
+const fmtMl = x => x >= 1000 ? (x / 1000).toFixed(2) + ' L' : x >= 100 ? x.toFixed(0) + ' mL' : x >= 10 ? x.toFixed(1) + ' mL' : x.toFixed(2) + ' mL';
+const fmtTime = s => s >= 60 ? Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s' : s.toFixed(1) + ' s';
+const rainName = R => R < 2.5 ? 'light rain' : R < 10.5 ? 'moderate rain' : R < 50 ? 'heavy rain' : 'violent rain';
+
+function updateLabels() {
+  $('oV').textContent = S.v.toFixed(2) + ' m/s';
+  $('oD').textContent = S.dist + ' m';
+  $('oR').textContent = (S.R < 10 ? S.R.toFixed(1) : S.R.toFixed(0)) + ' mm/h';
+  $('sR').textContent = rainName(S.R);
+  $('oWx').textContent = S.wx === 0 ? 'calm' : Math.abs(S.wx).toFixed(2) + (S.wx > 0 ? ' tail' : ' head');
+  $('oWz').textContent = S.wz === 0 ? 'none' : Math.abs(S.wz).toFixed(2) + (S.wz > 0 ? ' from left' : ' from right');
+  $('oLean').textContent = S.lean + '°';
+  $('oH').textContent = S.H.toFixed(2) + ' m';
+  for (const k in RESETS) RESETS[k].classList.toggle('same', isDefault(k));
+  syncAddress();
+  $('hudline').textContent = POSES[poseAt(S.v)].label + ' at ' + S.v.toFixed(2) + ' m/s (' + (S.v * 3.6).toFixed(1) + ' km/h), ' + rainName(S.R);
+}
+
+function updateReadouts() {
+  const { cur, walk, best } = sweep;
+  $('tWater').textContent = fmtMl(cur.total);
+  $('tWaterS').textContent = (cur.total / (S.dist / S.v)).toFixed(2) + ' mL per second';
+  const rel = (cur.total / walk.total - 1) * 100;
+  $('tVs').textContent = Math.abs(rel) < 0.05 ? 'same' : (rel > 0 ? '+' : '−') + Math.abs(rel).toFixed(1) + '%';
+  $('tVsS').textContent = 'walking collects ' + fmtMl(walk.total);
+  $('tTime').textContent = fmtTime(S.dist / S.v);
+  $('tTimeS').textContent = S.dist + ' m at ' + (S.v * 3.6).toFixed(1) + ' km/h';
+  const atEdge = best.v >= V_MAX - V_STEP / 2;
+  $('tBest').textContent = atEdge ? 'Fastest' : best.v.toFixed(2) + ' m/s';
+  $('tBestS').textContent = atEdge ? 'no optimum below ' + V_MAX + ' m/s' : fmtMl(best.total) + ' at the minimum';
+  $('lmax').textContent = '≥ ' + heatMax.toFixed(0) + ' mL/m²';
+}
+
+function updateTable() {
+  const rows = [0.5, 1, 1.4, 2, 3, 4, 5, 6, 8, 10].map(v => sweep.pts.reduce((a, b) => Math.abs(b.v - v) < Math.abs(a.v - v) ? b : a));
+  $('tbl').innerHTML = '<table><tr><th>m/s</th>' + REGIONS.map(r => '<th>' + r + '</th>').join('') + '<th>Total mL</th></tr>' +
+    rows.map(p => '<tr><td>' + p.v.toFixed(1) + '</td>' + p.reg.map(x => '<td>' + x.toFixed(1) + '</td>').join('') + '<td>' + p.total.toFixed(1) + '</td></tr>').join('') + '</table>';
+}
+
+// ---------------------------------------------------------------- plot
+const plot = $('plot'), pc = plot.getContext('2d');
+const PM = { l: 44, r: 12, t: 22, b: 30 };
+let hoverV = null;
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function niceMax(x) {
+  const p = Math.pow(10, Math.floor(Math.log10(x))), m = x / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+}
+
+function drawPlot() {
+  if (!sweep) return;
+  const dpr = window.devicePixelRatio || 1, W = plot.clientWidth, H = plot.clientHeight;
+  if (plot.width !== Math.round(W * dpr) || plot.height !== Math.round(H * dpr)) { plot.width = Math.round(W * dpr); plot.height = Math.round(H * dpr); }
+  pc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  pc.clearRect(0, 0, W, H);
+  const { pts, cur, best } = sweep;
+  const yMax = niceMax(Math.max(...pts.map(p => p.total)) * 1.02);
+  const X = v => PM.l + (v / V_MAX) * (W - PM.l - PM.r), Y = y => H - PM.b - (y / yMax) * (H - PM.t - PM.b);
+  const surface = css('--surface-1'), muted = css('--text-muted'), grid = css('--border'), ink = css('--text-primary');
+
+  // grid and axes
+  pc.font = '11px system-ui, sans-serif'; pc.lineWidth = 1;
+  pc.textAlign = 'right'; pc.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) {
+    const y = yMax * i / 4;
+    pc.strokeStyle = grid; pc.beginPath(); pc.moveTo(PM.l, Y(y) + .5); pc.lineTo(W - PM.r, Y(y) + .5); pc.stroke();
+    pc.fillStyle = muted; pc.fillText(y >= 1000 ? (y / 1000) + ' L' : String(+y.toPrecision(3)), PM.l - 6, Y(y));
+  }
+  pc.textAlign = 'center'; pc.textBaseline = 'top';
+  for (let v = 0; v <= V_MAX; v += 2) pc.fillText(v + (v === V_MAX ? ' m/s' : ''), X(v) - (v === V_MAX ? 10 : 0), H - PM.b + 6);
+  pc.textAlign = 'left'; pc.fillText('mL', 4, 2);
+
+  // stacked areas, one run per pose so the Auto switch shows as a clean break
+  const runs = [];
+  for (const p of pts) { const last = runs[runs.length - 1]; if (last && last[0].pose === p.pose) last.push(p); else runs.push([p]); }
+  for (const run of runs) {
+    const cum = run.map(() => 0);
+    for (let r = 0; r < NR; r++) {
+      pc.beginPath();
+      run.forEach((p, i) => { const y = Y(cum[i] + p.reg[r]); i ? pc.lineTo(X(p.v), y) : pc.moveTo(X(p.v), y); });
+      for (let i = run.length - 1; i >= 0; i--) pc.lineTo(X(run[i].v), Y(cum[i]));
+      pc.closePath();
+      pc.fillStyle = REGION_COLORS[r]; pc.fill();
+      pc.strokeStyle = surface; pc.lineWidth = 1.5; pc.stroke();   // surface gap between bands
+      run.forEach((p, i) => { cum[i] += p.reg[r]; });
+    }
+    pc.beginPath();
+    run.forEach((p, i) => { i ? pc.lineTo(X(p.v), Y(p.total)) : pc.moveTo(X(p.v), Y(p.total)); });
+    pc.strokeStyle = ink; pc.lineWidth = 2; pc.lineJoin = 'round'; pc.stroke();
+  }
+  if (runs.length > 1) {
+    pc.fillStyle = muted; pc.textAlign = 'center'; pc.textBaseline = 'top';
+    pc.fillText('walk', X((V_MIN + RUN_SWITCH) / 2) + 6, 2);
+    pc.fillText('run pose', X((RUN_SWITCH + V_MAX) / 2), 2);
+    pc.strokeStyle = grid; pc.setLineDash([2, 3]); pc.beginPath(); pc.moveTo(X(RUN_SWITCH) + .5, PM.t - 6); pc.lineTo(X(RUN_SWITCH) + .5, H - PM.b); pc.stroke(); pc.setLineDash([]);
+  }
+
+  // minimum, when it is not simply "as fast as possible"
+  const mark = (p, label, above) => {
+    pc.beginPath(); pc.arc(X(p.v), Y(p.total), 5, 0, 2 * Math.PI);
+    pc.fillStyle = ink; pc.fill(); pc.strokeStyle = surface; pc.lineWidth = 2; pc.stroke();
+    pc.fillStyle = ink; pc.font = '600 11px system-ui, sans-serif';
+    const tw = pc.measureText(label).width, x = Math.max(PM.l + tw / 2 + 2, Math.min(W - PM.r - tw / 2 - 2, X(p.v)));
+    pc.textAlign = 'center'; pc.textBaseline = above ? 'bottom' : 'top';
+    const y = Y(p.total) + (above ? -9 : 9);
+    pc.strokeStyle = surface; pc.lineWidth = 3; pc.strokeText(label, x, y); pc.fillText(label, x, y);
+    pc.font = '11px system-ui, sans-serif';
+  };
+  if (best.v < V_MAX - V_STEP / 2) {
+    // full-height line, a filled flag at the top and a ring on the curve
+    const x = X(best.v), label = 'Driest ' + best.v.toFixed(2) + ' m/s', fh = 17, fy = PM.t + 3;
+    pc.font = '600 11.5px system-ui, sans-serif';
+    const fw = pc.measureText(label).width + 14, fx = Math.max(PM.l + 1, Math.min(W - PM.r - fw, x - fw / 2));
+    pc.strokeStyle = surface; pc.lineWidth = 4.5; pc.beginPath(); pc.moveTo(x, fy + fh); pc.lineTo(x, H - PM.b); pc.stroke();
+    pc.strokeStyle = ink; pc.lineWidth = 1.5; pc.beginPath(); pc.moveTo(x, fy + fh); pc.lineTo(x, H - PM.b + 4); pc.stroke();
+    pc.fillStyle = ink; pc.beginPath(); pc.roundRect(fx, fy, fw, fh, 4); pc.fill();
+    pc.fillStyle = surface; pc.textAlign = 'center'; pc.textBaseline = 'middle'; pc.fillText(label, fx + fw / 2, fy + fh / 2 + .5);
+    pc.beginPath(); pc.arc(x, Y(best.total), 7, 0, 2 * Math.PI);
+    pc.fillStyle = surface; pc.fill(); pc.strokeStyle = ink; pc.lineWidth = 2.5; pc.stroke();
+    pc.font = '11px system-ui, sans-serif';
+  }
+
+  // current speed
+  pc.strokeStyle = ink; pc.lineWidth = 1; pc.setLineDash([3, 3]);
+  pc.beginPath(); pc.moveTo(X(cur.v) + .5, Y(cur.total)); pc.lineTo(X(cur.v) + .5, H - PM.b); pc.stroke(); pc.setLineDash([]);
+  mark(cur, fmtMl(cur.total), true);
+
+  // hover crosshair
+  if (hoverV !== null) {
+    pc.strokeStyle = muted; pc.lineWidth = 1;
+    pc.beginPath(); pc.moveTo(X(hoverV) + .5, PM.t); pc.lineTo(X(hoverV) + .5, H - PM.b); pc.stroke();
+  }
+}
+
+function plotV(ev) {
+  const r = plot.getBoundingClientRect(), f = (ev.clientX - r.left - PM.l) / (r.width - PM.l - PM.r);
+  return Math.max(V_MIN, Math.min(V_MAX, Math.round(f * V_MAX / V_STEP) * V_STEP));
+}
+function showTip(ev) {
+  if (!sweep) return;
+  hoverV = plotV(ev);
+  const p = sweep.pts.reduce((a, b) => Math.abs(b.v - hoverV) < Math.abs(a.v - hoverV) ? b : a);
+  const tip = $('tip');
+  tip.innerHTML = '<div class="h">' + p.v.toFixed(2) + ' m/s · ' + fmtMl(p.total) + '</div>' +
+    REGIONS.map((n, r) => '<div class="r"><span><span class="sw" style="background:' + REGION_COLORS[r] + '"></span>' + n + '</span><span>' + fmtMl(p.reg[r]) + '</span></div>').reverse().join('');
+  tip.style.display = 'block';
+  const r = plot.getBoundingClientRect(), x = ev.clientX - r.left;
+  tip.style.left = (x > r.width / 2 ? x - tip.offsetWidth - 12 : x + 12) + 'px';
+  tip.style.top = '8px';
+  drawPlot();
+}
+let plotDrag = false;
+plot.addEventListener('pointerdown', ev => { plotDrag = true; plot.setPointerCapture(ev.pointerId); setSpeed(plotV(ev)); showTip(ev); });
+plot.addEventListener('pointermove', ev => { if (plotDrag) setSpeed(plotV(ev)); showTip(ev); });
+plot.addEventListener('pointerup', () => { plotDrag = false; });
+plot.addEventListener('pointerleave', () => { hoverV = null; $('tip').style.display = 'none'; drawPlot(); });
+function setSpeed(v) { S.v = v; $('iV').value = v; recompute(); }
+
+$('plegend').innerHTML = REGIONS.map((n, r) => '<span><span class="sw" style="background:' + REGION_COLORS[r] + '"></span>' + n + '</span>').join('') +
+  '<span><span class="sw" style="background:var(--text-primary);height:2px;vertical-align:middle"></span>Total</span>';
+$('lbar').style.background = 'linear-gradient(90deg,' + HEAT.join(',') + ')';
+
+// ---------------------------------------------------------------- controls
+const bind = (id, fn, heavy) => $(id).addEventListener('input', ev => { fn(ev.target.value); heavy ? (updateLabels(), ensureTables()) : recompute(); });
+bind('iV', x => { S.v = +x; });
+bind('iD', x => { S.dist = +x; });
+bind('iR', x => { S.R = 0.5 * Math.pow(200, +x); classes = dropClasses(S.R); seedRain(); });
+bind('iWx', x => { S.wx = +x; });
+bind('iWz', x => { S.wz = +x; });
+bind('iH', x => { S.H = +x; });
+bind('iPose', x => { S.pose = x; }, true);
+bind('iLean', x => { S.lean = +x; }, true);
+
+function syncInputs() {
+  $('iV').value = S.v; $('iD').value = S.dist; $('iR').value = Math.log(S.R / 0.5) / Math.log(200);
+  $('iWx').value = S.wx; $('iWz').value = S.wz; $('iLean').value = S.lean; $('iH').value = S.H; $('iPose').value = S.pose;
+  classes = dropClasses(S.R);
+}
+
+// One reset button per setting. It shows only while the setting differs from its default.
+const SETTING_INPUTS = { v: 'iV', dist: 'iD', R: 'iR', wx: 'iWx', wz: 'iWz', pose: 'iPose', lean: 'iLean', H: 'iH' };
+const RESETS = {};
+// The rain slider is logarithmic, so S.R cannot land exactly on the default; accept half a slider step.
+const isDefault = k => k === 'pose' ? S.pose === DEFAULTS.pose
+  : k === 'R' ? Math.abs(Math.log(S.R / DEFAULTS.R)) < 0.0025 * Math.log(200) + 1e-9
+  : Math.abs(S[k] - DEFAULTS[k]) < 1e-6;
+for (const k in SETTING_INPUTS) {
+  const input = $(SETTING_INPUTS[k]), ctl = input.parentNode, name = ctl.querySelector('label').textContent.toLowerCase();
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'rst same'; b.textContent = '\u21ba';
+  b.title = 'Reset ' + name + ' to the default'; b.setAttribute('aria-label', b.title);
+  (ctl.querySelector('output') || input).after(b);
+  b.addEventListener('click', () => {
+    S[k] = DEFAULTS[k];
+    syncInputs(); if (k === 'R') seedRain();
+    updateLabels(); ensureTables();
+    input.focus();
+  });
+  RESETS[k] = b;
+}
+
+// Share: the URL holds every setting that differs from its default. The address bar follows the settings.
+function shareURL() {
+  const q = new URLSearchParams();
+  for (const k in SETTING_INPUTS) if (!isDefault(k)) q.set(k, k === 'pose' ? S.pose : String(+S[k].toFixed(2)));
+  if (new URLSearchParams(location.search).has('selftest')) q.set('selftest', '');
+  const qs = q.toString().replace(/=(?=&|$)/g, '');
+  return location.href.split(/[?#]/)[0] + (qs ? '?' + qs : '');
+}
+let addressTimer = 0;
+function syncAddress() {   // delayed, because browsers limit the rate of history updates
+  clearTimeout(addressTimer);
+  addressTimer = setTimeout(() => { try { history.replaceState(null, '', shareURL()); } catch (e) { /* not allowed for this origin */ } }, 250);
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* use the older method */ }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) { /* no clipboard access */ }
+  ta.remove(); return ok;
+}
+$('share').addEventListener('click', async () => {
+  const url = shareURL(), b = $('share');
+  if (await copyText(url)) { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 1500); }
+  else prompt('Copy this link:', url);
+});
+$('reset').addEventListener('click', () => {
+  Object.assign(S, DEFAULTS); Object.assign(cam, CAM0);
+  syncInputs(); seedRain(); updateLabels(); ensureTables();
+});
+
+// ---------------------------------------------------------------- scene
+const CAM0 = { yaw: 0.95, pitch: 0.2, dist: 5.2 };
+const cam = { ...CAM0 };
+{
+  let drag = null;
+  canvas.addEventListener('pointerdown', ev => { drag = [ev.clientX, ev.clientY]; canvas.setPointerCapture(ev.pointerId); });
+  canvas.addEventListener('pointermove', ev => {
+    if (!drag) return;
+    cam.yaw += (ev.clientX - drag[0]) * 0.008;
+    cam.pitch = Math.max(-0.05, Math.min(1.45, cam.pitch + (ev.clientY - drag[1]) * 0.006));
+    drag = [ev.clientX, ev.clientY];
+  });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('wheel', ev => { ev.preventDefault(); cam.dist = Math.max(2.2, Math.min(14, cam.dist * Math.exp(ev.deltaY * 0.001))); }, { passive: false });
+}
+
+function viewProj(aspect) {
+  const t = [0, 0.92 * S.H / REF_H, 0];
+  const eye = add(t, mul([Math.cos(cam.pitch) * Math.cos(cam.yaw), Math.sin(cam.pitch), Math.cos(cam.pitch) * Math.sin(cam.yaw)], cam.dist));
+  const f = norm(sub(t, eye)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f);
+  const view = [r[0], u[0], -f[0], 0, r[1], u[1], -f[1], 0, r[2], u[2], -f[2], 0, -dot(r, eye), -dot(u, eye), dot(f, eye), 1];
+  const fov = 38 * DEG, n = 0.1, fa = 80, k = 1 / Math.tan(fov / 2);
+  const proj = [k / aspect, 0, 0, 0, 0, k, 0, 0, 0, 0, (fa + n) / (n - fa), -1, 0, 0, 2 * fa * n / (n - fa), 0];
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++) {
+    let s = 0; for (let k2 = 0; k2 < 4; k2++) s += proj[k2 * 4 + rr] * view[c * 4 + k2];
+    o[c * 4 + rr] = s;
+  }
+  return o;
+}
+
+function lineBuffer(data, usage) {
+  const vao = gl.createVertexArray(), buf = gl.createBuffer();
+  gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, usage);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 16, 12);
+  gl.bindVertexArray(null);
+  return { vao, buf, n: data.length / 4 };
+}
+// ground: lines across the path scroll backwards, lines along it stay put
+const GRID = 16;
+const crossLines = [], alongLines = [];
+for (let i = -GRID - 1; i <= GRID + 1; i++) crossLines.push(i, 0, -GRID, 1, i, 0, GRID, 1);
+for (let i = -GRID; i <= GRID; i++) alongLines.push(-GRID - 1, 0, i, 1, GRID + 1, 0, i, 1);
+const gCross = lineBuffer(new Float32Array(crossLines), gl.STATIC_DRAW);
+const gAlong = lineBuffer(new Float32Array(alongLines), gl.STATIC_DRAW);
+const gArrow = lineBuffer(new Float32Array([0.75, 0, 0, 1, 1.5, 0, 0, 1, 1.5, 0, 0, 1, 1.3, 0, 0.12, 1, 1.5, 0, 0, 1, 1.3, 0, -0.12, 1]), gl.STATIC_DRAW);
+
+// rain streaks (visual only; the measurement does not use them)
+const MAXDROPS = 7000, BOX = [6, 5.5, 5];
+const drops = new Float32Array(MAXDROPS * 4);     // x, y, z, fall speed
+const streaks = new Float32Array(MAXDROPS * 8);
+const gRain = lineBuffer(streaks, gl.DYNAMIC_DRAW);
+let nDrops = 0;
+function seedRain() {
+  // sample fall speeds by number flux of drops big enough to see
+  const w = classes.D.map((d, i) => d >= 0.5 ? classes.num[i] * classes.vt[i] : 0), tot = w.reduce((a, b) => a + b, 0);
+  nDrops = Math.round(Math.min(MAXDROPS, 500 + 900 * Math.log2(1 + S.R)));
+  for (let i = 0; i < MAXDROPS; i++) {
+    let x = Math.random() * tot, k = 0;
+    while (k < w.length - 1 && x > w[k]) { x -= w[k]; k++; }
+    drops[i * 4] = (Math.random() * 2 - 1) * BOX[0]; drops[i * 4 + 1] = Math.random() * BOX[1]; drops[i * 4 + 2] = (Math.random() * 2 - 1) * BOX[2];
+    drops[i * 4 + 3] = classes.vt[k];
+  }
+}
+function stepRain(dt) {
+  const vx = S.wx - S.v, vz = S.wz, ex = 0.03;
+  for (let i = 0; i < nDrops; i++) {
+    const o = i * 4, vy = -drops[o + 3];
+    let x = drops[o] + vx * dt, y = drops[o + 1] + vy * dt, z = drops[o + 2] + vz * dt;
+    if (y < 0) y += BOX[1];
+    if (x < -BOX[0]) x += 2 * BOX[0]; else if (x > BOX[0]) x -= 2 * BOX[0];
+    if (z < -BOX[2]) z += 2 * BOX[2]; else if (z > BOX[2]) z -= 2 * BOX[2];
+    drops[o] = x; drops[o + 1] = y; drops[o + 2] = z;
+    const s = i * 8;
+    streaks[s] = x; streaks[s + 1] = y; streaks[s + 2] = z; streaks[s + 3] = 1;
+    streaks[s + 4] = x - vx * ex; streaks[s + 5] = y - vy * ex; streaks[s + 6] = z - vz * ex; streaks[s + 7] = 0.15;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, gRain.buf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, streaks, 0, nDrops * 8);
+}
+
+let lastT = 0, travelled = 0;
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (t - lastT) / 1000 || 0); lastT = t;
+  if (busy || contextLost) return;                // the GPU is measuring, or not available
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  travelled = (travelled + S.v * dt) % 1;
+  stepRain(dt);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0.125, 0.135, 0.15, 1); gl.depthMask(true);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  const vp = viewProj(w / h);
+
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(progLine.p); gl.uniformMatrix4fv(progLine.u.uVP, false, vp);
+  gl.uniform1f(progLine.u.uFade, GRID - 2); gl.uniform4f(progLine.u.uCol, 0.62, 0.66, 0.72, 0.42);
+  gl.uniform3f(progLine.u.uOff, -travelled, 0, 0); gl.bindVertexArray(gCross.vao); gl.drawArrays(gl.LINES, 0, gCross.n);
+  gl.uniform3f(progLine.u.uOff, 0, 0, 0); gl.bindVertexArray(gAlong.vao); gl.drawArrays(gl.LINES, 0, gAlong.n);
+  gl.uniform4f(progLine.u.uCol, 0.94, 0.94, 0.92, 0.8); gl.uniform1f(progLine.u.uFade, 0);
+  gl.bindVertexArray(gArrow.vao); gl.drawArrays(gl.LINES, 0, gArrow.n);
+
+  const e = cache.get(keyOf(poseAt(S.v)));
+  if (e && e.colored) {
+    gl.disable(gl.BLEND);
+    gl.useProgram(progBody.p); gl.uniformMatrix4fv(progBody.u.uVP, false, vp); gl.uniform1f(progBody.u.uScale, S.H / REF_H);
+    gl.bindVertexArray(e.g.vao); gl.drawArrays(gl.TRIANGLES, 0, e.mesh.nTri * 3);
+    gl.enable(gl.BLEND);
+  }
+
+  gl.depthMask(false);
+  gl.useProgram(progLine.p); gl.uniform3f(progLine.u.uOff, 0, 0, 0); gl.uniform1f(progLine.u.uFade, 0);
+  gl.uniform4f(progLine.u.uCol, 0.72, 0.82, 0.96, 0.5);
+  gl.bindVertexArray(gRain.vao); gl.drawArrays(gl.LINES, 0, nDrops * 2);
+  gl.depthMask(true); gl.bindVertexArray(null);
+}
+
+// ---------------------------------------------------------------- self-test hook
+// Measures a sphere of radius 0.5 m; every direction should see pi/4 = 0.785 m^2.
+window.rainSim = {
+  S, get sweep() { return sweep; }, get ready() { return ready; },
+  async sphereTest() {
+    const tris = []; capsule(tris, [0, 0.5, 0], [0, 0.5, 0], 0.5, 0.5, 0, { ns: 48, nc: 16 });
+    const n = tris.length, pos = new Float32Array(n * 9), ids = new Uint8Array(n * 12);
+    tris.forEach((t, i) => { for (let k = 0; k < 3; k++) { pos.set(t.p[k], i * 9 + k * 3); ids.set([(i + 1) & 255, ((i + 1) >> 8) & 255, ((i + 1) >> 16) & 255, 255], i * 12 + k * 4); } });
+    const mesh = { nTri: n, pos, ids, nrm: pos, region: new Uint8Array(n), center: [0, 0.5, 0], rad: 0.51 };
+    const g = uploadMesh(mesh);
+    busy = true;
+    const t = await buildTable(mesh, g, () => false, () => {});
+    busy = false; freeMesh(g);
+    const a = []; for (let d = 0; d < ND; d++) a.push(t.reg[d * NR]);
+    return { expected: Math.PI / 4, min: Math.min(...a), max: Math.max(...a) };
+  },
+  areas(pose = 'stand') {            // projected areas of a pose: from above, from the front, from the side
+    const e = cache.get(keyOf(pose)); if (!e || !e.table) return null;
+    const sum = d => { let s = 0; for (let r = 0; r < NR; r++) s += e.table.reg[d * NR + r]; return s; };
+    return { top: sum(0), front: sum((NT - 1) * NA), side: sum((NT - 1) * NA + NA / 4), skin: e.mesh.area.reduce((a, b) => a + b, 0), tris: e.mesh.nTri };
+  },
+};
+
+// index.html?selftest prints the checks into the page
+async function selfTest() {
+  const pre = document.createElement('pre');
+  pre.id = 'selftest'; pre.style.cssText = 'font-size:11px;white-space:pre-wrap;color:var(--text-secondary)';
+  document.querySelector('aside').appendChild(pre);
+  const out = { renderer: gl.getParameter(gl.RENDERER), areas: {}, sweep: sweep.pts.filter((p, i) => i % 10 === 8).map(p => [+p.v.toFixed(2), +p.total.toFixed(2)]) };
+  for (const p of neededPoses()) out.areas[p] = window.rainSim.areas(p);
+  out.best = [sweep.best.v, sweep.best.total]; out.heatMax = heatMax;
+  out.sphere = await window.rainSim.sphereTest();
+  pre.textContent = 'SELFTEST ' + JSON.stringify(out);
+}
+
+// ---------------------------------------------------------------- go
+window.addEventListener('resize', drawPlot);
+{ // optional starting values, e.g. index.html?v=4&wx=3&R=25&pose=run
+  const q = new URLSearchParams(location.search), num = (k, lo, hi) => { const x = parseFloat(q.get(k)); if (isFinite(x)) S[k] = Math.max(lo, Math.min(hi, x)); };
+  num('v', V_MIN, V_MAX); num('dist', 10, 1000); num('R', 0.5, 100); num('wx', -10, 10); num('wz', -10, 10); num('lean', 0, 45); num('H', 1.4, 2.05);
+  S.lean = Math.round(S.lean);
+  if (['auto', ...Object.keys(POSES)].includes(q.get('pose'))) S.pose = q.get('pose');
+  syncInputs();
+}
+seedRain(); updateLabels(); ensureTables();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
